@@ -1,0 +1,268 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  STUDENT
+  FACULTY
+  ADMIN
+}
+
+enum ResourceStatus {
+  AVAILABLE
+  BOOKED
+  MAINTENANCE
+  IN_USE
+}
+
+enum BookingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IssueStatus {
+  OPEN
+  IN_REPAIR
+  SCHEDULED
+  RESOLVED
+}
+
+enum OpportunityType {
+  HACKATHON
+  INTERNSHIP
+  COMPETITION
+  WORKSHOP
+  SCHOLARSHIP
+  RESEARCH
+}
+
+model Department {
+  id        String     @id @default(uuid())
+  code      String     @unique
+  name      String
+  users     User[]
+  resources Resource[]
+  createdAt DateTime   @default(now())
+}
+
+model User {
+  id            String          @id @default(uuid())
+  email         String          @unique
+  name          String
+  role          Role            @default(STUDENT)
+  avatar        String?
+  rollNumber    String?
+  departmentId  String?
+  department    Department?     @relation(fields: [departmentId], references: [id])
+  bookings      Booking[]       @relation("UserBookings")
+  approvals     Approval[]      @relation("ApproverUser")
+  checkIns      CheckIn[]
+  waitlists     Waitlist[]
+  issues        Issue[]
+  auditLogs     AuditLog[]
+  projects      Project[]       @relation("StudentProjects")
+  mentoredProjs Project[]       @relation("FacultyMentoredProjects")
+  progress      StudentProgress?
+  notifications Notification[]
+  createdAt     DateTime        @default(now())
+}
+
+model Resource {
+  id            String             @id @default(uuid())
+  name          String
+  type          String // Lab, Room, Equipment, Facility
+  building      String
+  floor         String
+  capacity      Int                @default(1)
+  status        ResourceStatus     @default(AVAILABLE)
+  departmentId  String
+  department    Department         @relation(fields: [departmentId], references: [id])
+  imageUrl      String?
+  isShared      Boolean            @default(false)
+  sharedWith    String[]           // Array of department codes
+  features      ResourceFeature[]
+  bundleItems   ResourceBundle[]   @relation("BundleItems")
+  bundleParent  ResourceBundle[]   @relation("ParentBundle")
+  bookings      BookingResource[]
+  maintenance   MaintenanceWindow[]
+  issues        Issue[]
+  projectReqs   ProjectResource[]
+  createdAt     DateTime           @default(now())
+}
+
+model ResourceFeature {
+  id         String   @id @default(uuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  feature    String
+}
+
+model ResourceBundle {
+  id             String   @id @default(uuid())
+  parentResId    String
+  parentResource Resource @relation("ParentBundle", fields: [parentResId], references: [id])
+  itemResId      String
+  itemResource   Resource @relation("BundleItems", fields: [itemResId], references: [id])
+}
+
+model Booking {
+  id           String            @id @default(uuid())
+  bookingCode  String            @unique
+  userId       String
+  user         User              @relation("UserBookings", fields: [userId], references: [id])
+  purpose      String
+  startTime    DateTime
+  endTime      DateTime
+  status       BookingStatus     @default(PENDING)
+  resources    BookingResource[]
+  approvals    Approval[]
+  checkIn      CheckIn?
+  waitlist     Waitlist?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model BookingResource {
+  id         String   @id @default(uuid())
+  bookingId  String
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id])
+}
+
+model Approval {
+  id         String   @id @default(uuid())
+  bookingId  String
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  approverId String
+  approver   User     @relation("ApproverUser", fields: [approverId], references: [id])
+  status     BookingStatus
+  notes      String?
+  createdAt  DateTime @default(now())
+}
+
+model CheckIn {
+  id        String   @id @default(uuid())
+  bookingId String   @unique
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  scannedAt DateTime @default(now())
+}
+
+model Waitlist {
+  id        String   @id @default(uuid())
+  bookingId String   @unique
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  position  Int
+  createdAt DateTime @default(now())
+}
+
+model MaintenanceWindow {
+  id          String   @id @default(uuid())
+  resourceId  String
+  resource    Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  reason      String
+  startTime   DateTime
+  endTime     DateTime
+  isResolved  Boolean  @default(false)
+}
+
+model Issue {
+  id          String      @id @default(uuid())
+  resourceId  String
+  resource    Resource    @relation(fields: [resourceId], references: [id])
+  reportedById String
+  reportedBy  User        @relation(fields: [reportedById], references: [id])
+  description String
+  priority    Priority    @default(MEDIUM)
+  status      IssueStatus @default(OPEN)
+  createdAt   DateTime    @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // BOOKING, APPROVAL, MAINTENANCE, OPPORTUNITY
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  userName  String
+  action    String
+  resource  String
+  status    String
+  details   String?
+  timestamp DateTime @default(now())
+}
+
+model Project {
+  id          String            @id @default(uuid())
+  title       String
+  description String
+  progress    Int               @default(0)
+  mentorId    String?
+  mentor      User?             @relation("FacultyMentoredProjects", fields: [mentorId], references: [id])
+  students    User[]            @relation("StudentProjects")
+  resources   ProjectResource[]
+  milestones  String[]
+  createdAt   DateTime          @default(now())
+}
+
+model ProjectResource {
+  id         String   @id @default(uuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id])
+}
+
+model Opportunity {
+  id           String          @id @default(uuid())
+  title        String
+  organization String
+  type         OpportunityType
+  deadline     DateTime
+  tags         String[]
+  location     String?
+  description  String
+  applyUrl     String?
+  createdAt    DateTime        @default(now())
+}
+
+model StudentProgress {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  overallReadiness   Int      @default(72)
+  dsaScore           Int      @default(70)
+  aptitudeScore      Int      @default(80)
+  csFundamentalsScore Int     @default(60)
+  projectsScore      Int      @default(85)
+  communicationScore Int      @default(70)
+}
